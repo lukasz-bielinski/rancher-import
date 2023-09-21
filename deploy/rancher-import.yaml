@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rancher-import
+  namespace: cattle-system
+spec:
+  template:
+    metadata:
+      labels:
+        app: rancher-import
+    spec:
+      serviceAccountName: vault-auth
+      containers:
+        - name: rancher-tokens
+          image: lukaszbielinski/rancher-import
+          imagePullPolicy: Always
+          env:
+            - name: RANCHER_SERVER
+              value: rancher.net
+            - name: SKIP_TLS_VERIFY
+              value: "true"
+            - name: VAULT_ADDR
+              value: vaultAdress
+            - name: VAULT_SECRET_ENGINE
+              value: kv-v2
+            - name: VAULT_SECRET_PATH
+              value: secretNAme
+      restartPolicy: OnFailure
+  backoffLimit: 4
