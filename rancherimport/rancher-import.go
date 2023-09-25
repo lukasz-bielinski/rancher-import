@@ -61,93 +61,65 @@ func ImportClusterToRancher(rancherServer, apiKeyName, apiKeyToken string, httpC
 	json.NewDecoder(resp.Body).Decode(&result)
 	fmt.Printf("Rancher response: %+v\n", result)
 
-	if importYamlInterface, ok := result["importYaml"]; ok {
-		urlString := importYamlInterface.(string)
-		if strings.HasPrefix(urlString, "http") {
-			req, err := http.NewRequest("GET", urlString, nil)
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKeyToken))
-			resp, err := httpClient.Do(req)
-			if err != nil {
-				return fmt.Errorf("failed to fetch import YAML from URL: %s, error: %v", urlString, err)
-			}
-			defer resp.Body.Close()
-			body, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read the content from the fetched URL: %s, error: %v", urlString, err)
-			}
-			importCommand := string(body)
-			if importCommand == "" {
-				return fmt.Errorf("import YAML content is empty from URL: %s", urlString)
-			}
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(importCommand)
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("failed to apply Rancher import command: %v", err)
-			}
-		}
-	} else {
+	// Fetch the clusterRegistrationTokens link from Rancher's response
+	tokensURL, ok := result["links"].(map[string]interface{})["clusterRegistrationTokens"].(string)
+	if !ok {
+		return fmt.Errorf("no clusterRegistrationTokens link found in Rancher's response")
+	}
 
-		// Fetch the clusterRegistrationTokens link from Rancher's response
-		tokensURL, ok := result["links"].(map[string]interface{})["clusterRegistrationTokens"].(string)
-		if !ok {
-			return fmt.Errorf("no clusterRegistrationTokens link found in Rancher's response")
-		}
+	// Fetch the tokens data from Rancher
+	time.Sleep(3 * time.Second)
 
-		// Fetch the tokens data from Rancher
-		time.Sleep(3 * time.Second)
+	req, _ = http.NewRequest("GET", tokensURL, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKeyToken))
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch cluster registration tokens data from Rancher: %v", err)
+	}
+	defer resp.Body.Close()
 
-		req, _ = http.NewRequest("GET", tokensURL, nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKeyToken))
-		resp, err = httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to fetch cluster registration tokens data from Rancher: %v", err)
-		}
-		defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	var tokensResponse map[string]interface{}
+	json.Unmarshal(body, &tokensResponse)
 
-		body, _ = ioutil.ReadAll(resp.Body)
-		var tokensResponse map[string]interface{}
-		json.Unmarshal(body, &tokensResponse)
+	fmt.Printf("Data type: %T, content: %+v\n", tokensResponse["data"], tokensResponse["data"])
+	tokensData, exists := tokensResponse["data"].([]interface{})
+	if !exists || len(tokensData) == 0 {
+		return fmt.Errorf("no tokens data found in Rancher's cluster registration tokens response")
+	}
 
-		fmt.Printf("Data type: %T, content: %+v\n", tokensResponse["data"], tokensResponse["data"])
-		tokensData, exists := tokensResponse["data"].([]interface{})
-		if !exists || len(tokensData) == 0 {
-			return fmt.Errorf("no tokens data found in Rancher's cluster registration tokens response")
-		}
+	firstToken := tokensData[0].(map[string]interface{})
+	manifestUrl, urlExists := firstToken["manifestUrl"].(string)
+	if !urlExists || manifestUrl == "" {
+		return fmt.Errorf("manifestUrl not found in the cluster registration token data")
+	}
 
-		firstToken := tokensData[0].(map[string]interface{})
-		manifestUrl, urlExists := firstToken["manifestUrl"].(string)
-		if !urlExists || manifestUrl == "" {
-			return fmt.Errorf("manifestUrl not found in the cluster registration token data")
-		}
+	// Fetch the manifest content
+	req, _ = http.NewRequest("GET", manifestUrl, nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKeyToken))
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch manifest content from URL: %s, error: %v", manifestUrl, err)
+	}
+	defer resp.Body.Close()
 
-		// Fetch the manifest content
-		req, _ = http.NewRequest("GET", manifestUrl, nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKeyToken))
-		resp, err = httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to fetch manifest content from URL: %s, error: %v", manifestUrl, err)
-		}
-		defer resp.Body.Close()
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read the content from the fetched URL: %s, error: %v", manifestUrl, err)
+	}
+	manifestContent := string(body)
+	if manifestContent == "" {
+		return fmt.Errorf("manifest content is empty from URL: %s", manifestUrl)
+	}
 
-		body, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read the content from the fetched URL: %s, error: %v", manifestUrl, err)
-		}
-		manifestContent := string(body)
-		if manifestContent == "" {
-			return fmt.Errorf("manifest content is empty from URL: %s", manifestUrl)
-		}
-
-		// Use kubectl to apply the manifest content
-		cmd := exec.Command("kubectl", "apply", "-f", "-")
-		cmd.Stdin = strings.NewReader(manifestContent)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err != nil {
-			return fmt.Errorf("failed to apply Rancher import manifest: %v, stderr: %s", err, stderr.String())
-		}
-
+	// Use kubectl to apply the manifest content
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifestContent)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to apply Rancher import manifest: %v, stderr: %s", err, stderr.String())
 	}
 
 	return nil
