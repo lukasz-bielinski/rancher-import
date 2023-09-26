@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -26,8 +28,12 @@ func ImportClusterToRancher(rancherServer, apiKeyName, apiKeyToken string, httpC
 		Type string `json:"type"`
 	}
 	var body []byte
+	downstreamClusterName := os.Getenv("CLUSTER_NAME")
+	if downstreamClusterName == "" {
+		log.Fatal("env CLUSTER_NAME was not set")
+	}
 	payload := &ClusterCreateRequest{
-		Name: fmt.Sprintf("cluster-1"),
+		Name: fmt.Sprintf(downstreamClusterName),
 		Type: "import",
 	}
 
@@ -59,7 +65,7 @@ func ImportClusterToRancher(rancherServer, apiKeyName, apiKeyToken string, httpC
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
-	fmt.Printf("Rancher response: %+v\n", result)
+	//fmt.Printf("Rancher response: %+v\n", result)
 
 	// Fetch the clusterRegistrationTokens link from Rancher's response
 	tokensURL, ok := result["links"].(map[string]interface{})["clusterRegistrationTokens"].(string)
@@ -82,7 +88,7 @@ func ImportClusterToRancher(rancherServer, apiKeyName, apiKeyToken string, httpC
 	var tokensResponse map[string]interface{}
 	json.Unmarshal(body, &tokensResponse)
 
-	fmt.Printf("Data type: %T, content: %+v\n", tokensResponse["data"], tokensResponse["data"])
+	//fmt.Printf("Data type: %T, content: %+v\n", tokensResponse["data"], tokensResponse["data"])
 	tokensData, exists := tokensResponse["data"].([]interface{})
 	if !exists || len(tokensData) == 0 {
 		return fmt.Errorf("no tokens data found in Rancher's cluster registration tokens response")
