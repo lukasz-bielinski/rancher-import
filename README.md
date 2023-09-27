@@ -1,72 +1,67 @@
-Documentation for Rancher Token Management Service    
-Overview    
+# Documentation for Rancher import code
 
-This service is designed to automate the management of Rancher API tokens by interacting with the Rancher Server. It resets the Rancher password, logs in to the Rancher Server, creates a new API key, and finally stores the API key details in a Vault.    
+## Introduction
+
+The provided code consists of three packages:
+- A main package, which contains the principal logic of the application.
+- A `vaultlogic` package that handles fetching secrets from HashiCorp's Vault using Kubernetes authentication.
+- A `rancherimport` package, which is responsible for importing a Kubernetes cluster into Rancher.
+
+## Overview
+
+The primary purpose of this code is to import a pre-existing Kubernetes cluster into Rancher. The main package's logic orchestrates this by first preparing the HTTP client and then checking if a specific endpoint is accessible. Once these preliminary checks are successful, the code leverages both the vault logic and rancher import logic to complete the cluster registration process in Rancher.
 ## Architecture
 
 ![diagram.png](diagram.png)
 
+### Configuration and Execution:
 
-Dependencies    
+#### Environment Variables:
+- `RANCHER_SERVER`: URL of the Rancher server.
+- `USERNAME`: Username for the Rancher server. Defaults to `admin`.
+- `SKIP_TLS_VERIFY`: If set to `true`, the HTTP client will skip TLS verification. Otherwise, it uses a regular HTTP client.
+- `VAULT_ADDR`: Address of the Vault server.
+- `VAULT_SECRET_ENGINE`: The secret engine name in Vault. Defaults to `kv-v2`.
+- `VAULT_SECRET_PATH`: The path to the secret in Vault. Defaults to `creds`.
+- `CLUSTER_NAME`: The name of the downstream cluster.
 
-    Rancher API
-    Hashicorp Vault API
-    Kubernetes API
-    Standard Go Libraries
+#### Main Logic:
+1. Configure HTTP client based on environment variables.
+2. Repeatedly checks if the `RANCHER_SERVER` endpoint is accessible.
+3. Fetches the API keys from Vault using Kubernetes authentication.
+4. Calls the `ImportClusterToRancher` function from the `rancherimport` package to complete the import process.
 
-Environment Variables    
+### Vault Logic:
 
-    RANCHER_SERVER: The URL of the Rancher Server.
-    USERNAME: The username used for logging in to Rancher.
-    SKIP_TLS_VERIFY: If set to "true", the client will skip TLS verification (not recommended for production).
-    VAULT_ADDR: Vault address    
-    VAULT_SECRET_ENGINE: Vault engine e.g. kv-v2    
-    VAULT_SECRET_PATH: Vault secret path e.g. credentials
-    TOKEN_TTL: TTL of the token in Rancher    
+This logic is encapsulated in the `vaultlogic` package.
+- The `GetSecretWithKubernetesAuth` function is the primary method to fetch secrets.
+    - Configures the Vault client and Kubernetes authentication.
+    - Logs into Vault using Kubernetes authentication.
+    - Reads the required secrets from Vault.
+    - Returns the secrets.
 
-Packages    
-Main Package    
-Functions    
+### Rancher Import Logic:
 
-    main(): The main function to kick off the token management flow.
+This logic is housed in the `rancherimport` package.
+- `ImportClusterToRancher`: Main function to initiate the import process.
+    - Checks if a cluster with a given name already exists.
+    - Creates a new cluster in Rancher.
+    - Fetches the cluster registration tokens.
+    - Retrieves the manifest from the provided manifest URL.
+    - Uses `kubectl` to apply the manifest, thereby importing the cluster to Rancher.
+- `doesClusterExist`: Helper function to check if a given cluster name already exists in Rancher.
 
-Methods    
+## Requirements:
+- The environment must have `kubectl` command available.
+- Necessary permissions in both Rancher and Vault.
+- The application should have the appropriate RBAC in Kubernetes to perform operations.
 
-    logJSON(message string): Logs messages in JSON format.
-
-Rancher Password Reset Package (rancher_password_reset)    
-Functions    
-
-    ResetRancherPassword() -> (string, error): Resets the Rancher password and returns the new password.
-
-Vault Logic Package (vaultlogic)    
-Functions    
-
-    GetSecretWithKubernetesAuth(dataToStore map[string]interface{}) -> (string, error): Retrieves or updates a secret in Vault using Kubernetes authentication.
-
-Methods    
-
-    logJSON(message string): Logs messages in JSON format.
-    logAndReturnError(errMessage string, originalErr error) -> error: Logs an error message and returns the error.
-
-Flow of Control    
-
-    main() initializes environment variables and triggers ResetRancherPassword().
-    ResetRancherPassword() uses kubectl commands to reset the Rancher password and returns the new password.
-    main() proceeds to make an HTTP POST request to log in to the Rancher server using the new password.
-    Once logged in, an API key is generated.
-    The API key details (API_KEY_NAME and API_KEY_TOKEN) are stored in Vault via GetSecretWithKubernetesAuth().
-
-Error Handling    
-
-The application logs errors in JSON format and returns from the function in which the error occurred.    
-How to Run    
+## How to Run
 
     Ensure that all environment variables are set.
     Build the project: make build-push    
     Install on Kubernetes cluster:    
       kubectl apply -f -R deploy/
+## Conclusion:
 
-Note    
-
-If you're running this in a production environment, it is highly recommended to not use the "SKIP_TLS_VERIFY" feature for security reasons.
+This application is designed to automate the process of importing a Kubernetes cluster into Rancher using information stored in Vault. Proper configuration and permissions are crucial for its successful execution.

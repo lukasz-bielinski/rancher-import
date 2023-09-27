@@ -29,20 +29,6 @@ func main() {
 		USERNAME = "admin"
 	}
 
-	//TOKEN_TTL := os.Getenv("TOKEN_TTL")
-	//if TOKEN_TTL == "" {
-	//	TOKEN_TTL = "43200000"
-	//}
-	//
-	//TOKEN_TTL_INT, err := strconv.Atoi(TOKEN_TTL)
-	//if err != nil {
-	//	// Handle the error
-	//	log.Fatal("Invalid TOKEN_TTL value")
-	//}
-
-	//currentTime := time.Now().UTC().Format(time.RFC3339)
-	//API_KEY_DESCRIPTION := fmt.Sprintf("Token created at %s with cronjob rancher-token", currentTime)
-
 	var client *http.Client
 	if os.Getenv("SKIP_TLS_VERIFY") == "true" {
 		tr := &http.Transport{
